@@ -103,14 +103,26 @@
             to { opacity: 1; transform: translateY(0); }
         }
         
+        /* --- CSS สำหรับสีสถานะ (Status Colors) --- */
         .status-badge {
             padding: 4px 12px;
             border-radius: 20px;
             font-size: 0.85rem;
             font-weight: 500;
         }
+        /* สีเหลือง: สำหรับสถานะรอ หรืออื่นๆ */
         .status-pending { background-color: #fff3cd; color: #856404; }
+        
+        /* สีเขียวอ่อน: "อนุมัติการลา" */
         .status-approved { background-color: #d4edda; color: #155724; }
+        
+        /* สีเขียวเข้ม: "HR รับทราบและลงระบบแล้ว" */
+        .status-completed { background-color: #198754; color: #ffffff; }
+        
+        /* สีดำ: "ยกเลิกใบคำขอ" */
+        .status-canceled { background-color: #343a40; color: #ffffff; }
+        
+        /* สีแดง: "ไม่อนุมัติ" */
         .status-rejected { background-color: #f8d7da; color: #721c24; }
     </style>
 </head>
@@ -166,7 +178,8 @@
                     <thead>
                         <tr class="text-gray-500 text-sm border-b border-gray-100 bg-gray-50">
                             <th class="p-4 font-medium whitespace-nowrap">เลขที่</th>
-                            <th class="p-4 font-medium whitespace-nowrap">วันที่ลา</th>
+                            <th class="p-4 font-medium whitespace-nowrap">วันที่เริ่มต้น</th>
+                            <th class="p-4 font-medium whitespace-nowrap text-center">จำนวนวัน</th>
                             <th class="p-4 font-medium whitespace-nowrap">ประเภท</th>
                             <th class="p-4 font-medium whitespace-nowrap text-center">สถานะ</th>
                             <th class="p-4 font-medium text-center">รายละเอียด</th>
@@ -270,7 +283,8 @@
 
                 // Get URL Params (action)
                 const urlParams = new URLSearchParams(window.location.search);
-                const action = urlParams.get('action') || 'สิทธิการลา'; // Default action
+                // เปลี่ยน default action เป็น balance ตามที่ขอเปลี่ยนชื่อ
+                const action = urlParams.get('action') || 'balance'; 
 
                 // Get User Profile
                 const profile = await liff.getProfile();
@@ -284,7 +298,7 @@
                 // Fallback for Local Testing (Remove in Production)
                 if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
                     // Mock ID for testing
-                    // fetchData('ใบลา', 'U1234567890dummy'); 
+                    // fetchData('history', 'U1234567890dummy'); 
                     Swal.fire('Info', 'Running in Local Mode. Please open in LINE.', 'info');
                 } else {
                     Swal.fire('Error', 'ไม่สามารถเชื่อมต่อ LINE ได้: ' + error.message, 'error');
@@ -325,9 +339,10 @@
                 showLoading(false);
                 contentArea.classList.remove('hidden');
 
-                if (action === 'ใบลา') {
+                // เปลี่ยนเงื่อนไข action ตามที่ขอ
+                if (action === 'history') {
                     renderLeaveHistory(result.data, result.empInfo);
-                } else if (action === 'สิทธิการลา') {
+                } else if (action === 'balance') {
                     currentFlexData = result.data; // Store for sending to chat
                     renderLeaveRights(result.data);
                 }
@@ -358,25 +373,34 @@
             
             const tbody = clone.querySelector('#history-list');
             
+            // เรียงลำดับข้อมูล reqId จากมากไปน้อย (ล่าสุดขึ้นก่อน)
+            // ใช้ localeCompare พร้อม numeric: true เพื่อให้เรียงเลขอย่างถูกต้อง (เช่น 10 มาก่อน 2)
+            data.sort((a, b) => String(b.reqId).localeCompare(String(a.reqId), undefined, {numeric: true}));
+
             data.forEach(item => {
                 const tr = document.createElement('tr');
                 tr.className = "border-b border-gray-50 hover:bg-orange-50/30 transition-colors";
                 
-                // Status Logic
-                let statusClass = 'status-pending';
-                let statusText = item.status;
-                if(item.status.includes('อนุมัติ')) statusClass = 'status-approved';
-                if(item.status.includes('ไม่อนุมัติ') || item.status.includes('ยกเลิก')) statusClass = 'status-rejected';
+                // --- Status Logic (ปรับปรุงใหม่ตาม Requirement) ---
+                let statusClass = 'status-pending'; // Default: สีเหลือง (อื่นๆ)
+                let statusText = item.status || '';
+
+                // ตรวจสอบเงื่อนไขตามลำดับ
+                if (statusText.includes('HR รับทราบและลงระบบแล้ว')) {
+                    statusClass = 'status-completed'; // เขียวเข้ม
+                } else if (statusText.includes('ยกเลิกใบคำขอ')) {
+                    statusClass = 'status-canceled'; // สีดำ
+                } else if (statusText.includes('ไม่อนุมัติ')) {
+                    statusClass = 'status-rejected'; // สีแดง
+                } else if (statusText.includes('อนุมัติการลา')) {
+                    statusClass = 'status-approved'; // สีเขียวอ่อน
+                }
 
                 tr.innerHTML = `
                     <td class="p-4 font-medium text-gray-800">#${item.reqId}</td>
-                    <td class="p-4">
-                        <div class="flex flex-col">
-                            <span>${item.startDate}</span>
-                            <span class="text-xs text-gray-400">ถึง ${item.endDate}</span>
-                        </div>
-                    </td>
-                    <td class="p-4">${item.type}</td>
+                    <td class="p-4 text-gray-600">${item.startDate}</td>
+                    <td class="p-4 text-center font-semibold text-gray-700">${formatLeaveDay(item.totalDays)}</td>
+                    <td class="p-4 text-gray-600">${item.type}</td>
                     <td class="p-4 text-center"><span class="${statusClass} status-badge">${statusText}</span></td>
                     <td class="p-4 text-center">
                         <button class="text-orange-500 hover:text-orange-700 btn-ripple p-2 rounded-full hover:bg-orange-100 transition-all"
@@ -408,19 +432,19 @@
             const vacation = data.details.find(d => d.label === 'พักร้อน') || {remain:0, total:0, used:0};
 
             // Sick
-            clone.querySelector('#sick-remain').textContent = sick.remain;
-            clone.querySelector('#sick-total').textContent = sick.total;
-            clone.querySelector('#sick-used').textContent = sick.used;
+            clone.querySelector('#sick-remain').textContent = formatLeaveDay(sick.remain);
+            clone.querySelector('#sick-total').textContent = formatLeaveDay(sick.total);
+            clone.querySelector('#sick-used').textContent = formatLeaveDay(sick.used);
 
             // Personal
-            clone.querySelector('#personal-remain').textContent = personal.remain;
-            clone.querySelector('#personal-total').textContent = personal.total;
-            clone.querySelector('#personal-used').textContent = personal.used;
+            clone.querySelector('#personal-remain').textContent = formatLeaveDay(personal.remain);
+            clone.querySelector('#personal-total').textContent = formatLeaveDay(personal.total);
+            clone.querySelector('#personal-used').textContent = formatLeaveDay(personal.used);
 
             // Vacation
-            clone.querySelector('#vacation-remain').textContent = vacation.remain;
-            clone.querySelector('#vacation-total').textContent = vacation.total;
-            clone.querySelector('#vacation-used').textContent = vacation.used;
+            clone.querySelector('#vacation-remain').textContent = formatLeaveDay(vacation.remain);
+            clone.querySelector('#vacation-total').textContent = formatLeaveDay(vacation.total);
+            clone.querySelector('#vacation-used').textContent = formatLeaveDay(vacation.used);
 
             document.getElementById('content-area').appendChild(clone);
         }
@@ -433,37 +457,76 @@
             else loader.classList.add('hidden');
         }
 
+        // ฟังก์ชันจัดรูปแบบตัวเลขวันลา
+        function formatLeaveDay(val) {
+            const num = Number(val);
+            if (isNaN(num)) return val || '0';
+            // parseFloat จะตัดเลข 0 ต่อท้ายทศนิยมออกให้เอง (เช่น 1.00 -> 1, 1.50 -> 1.5)
+            return parseFloat(num.toFixed(2));
+        }
+
+        // Helper function for viewDetails fields
+        function getDetailRow(label, value, fullWidth = false) {
+            const valDisplay = value || '-';
+            const colClass = fullWidth ? 'col-span-2' : 'col-span-1';
+            return `
+                <div class="${colClass} flex flex-col border-b border-gray-100 pb-2">
+                    <span class="text-xs text-gray-400 mb-1">${label}</span>
+                    <span class="text-sm font-medium text-gray-800 break-words">${valDisplay}</span>
+                </div>
+            `;
+        }
+
         function viewDetails(item) {
             Swal.fire({
-                title: `<span class="text-lg font-bold text-gray-700">คำขอเลขที่ #${item.reqId}</span>`,
+                title: `<div class="text-xl font-bold text-gray-700 flex flex-col items-center">
+                            <span class="text-sm font-normal text-gray-400 mb-1">รายละเอียดใบคำขอ</span>
+                            <span>#${item.reqId}</span>
+                        </div>`,
                 html: `
-                    <div class="text-left text-sm space-y-3 p-2">
-                        <div class="grid grid-cols-3 gap-2 border-b pb-2">
-                            <span class="text-gray-500">ประเภท:</span>
-                            <span class="col-span-2 font-medium text-gray-800">${item.type}</span>
-                        </div>
-                        <div class="grid grid-cols-3 gap-2 border-b pb-2">
-                            <span class="text-gray-500">เหตุผล:</span>
-                            <span class="col-span-2 text-gray-800">${item.reason || '-'}</span>
-                        </div>
-                         <div class="grid grid-cols-3 gap-2 border-b pb-2">
-                            <span class="text-gray-500">รวมวันลา:</span>
-                            <span class="col-span-2 text-gray-800">${item.totalDays || '-'} วัน</span>
-                        </div>
-                        <div class="grid grid-cols-3 gap-2 border-b pb-2">
-                            <span class="text-gray-500">หัวหน้า:</span>
-                            <span class="col-span-2 text-gray-800">${item.managerNote || '-'}</span>
-                        </div>
-                        <div class="grid grid-cols-3 gap-2">
-                            <span class="text-gray-500">HR Memo:</span>
-                            <span class="col-span-2 text-gray-800">${item.hrMemo || '-'}</span>
+                    <div class="text-left bg-gray-50 p-4 rounded-xl max-h-[60vh] overflow-y-auto custom-scrollbar">
+                        <div class="grid grid-cols-2 gap-x-4 gap-y-3">
+                            <!-- ข้อมูลคำขอ -->
+                            ${getDetailRow('วันที่ยื่น', item.timestamp)}
+                            ${getDetailRow('เลขที่ใบคำขอ', item.reqId)}
+                            
+                            <!-- ข้อมูลพนักงาน -->
+                            ${getDetailRow('ชื่อ-สกุล', item.fullName)}
+                            ${getDetailRow('Email Address', item.email)}
+                            ${getDetailRow('ตำแหน่ง', item.position)}
+                            ${getDetailRow('ส่วนงาน', item.dept)}
+                            
+                            <div class="col-span-2 my-2 border-t border-gray-200"></div>
+
+                            <!-- รายละเอียดการลา -->
+                            ${getDetailRow('ประเภทการลา', item.type)}
+                            ${getDetailRow('จนวันที่ขอลา (จำนวนวัน)', formatLeaveDay(item.totalDays) + ' วัน')}
+                            ${getDetailRow('วันที่เริ่มต้นการลา', item.startDate)}
+                            ${getDetailRow('วันที่สิ้นสุดการลา', item.endDate)}
+                            ${getDetailRow('เหตุผลที่ลา', item.reason, true)}
+                            ${getDetailRow('เอกสารประกอบ', item.docs ? `<a href="${item.docs}" target="_blank" class="text-blue-500 underline">ดูเอกสาร</a>` : '-', true)}
+
+                            <div class="col-span-2 my-2 border-t border-gray-200"></div>
+
+                            <!-- สถานะและการอนุมัติ -->
+                            ${getDetailRow('สถานใบคำขอ', `<span class="px-2 py-1 rounded text-xs font-bold ${item.status.includes('อนุมัติ') ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-700'}">${item.status}</span>`, true)}
+                            ${getDetailRow('บันทึกหัวหน้า', item.managerNote, true)}
+                            ${getDetailRow('บันทึกHR', item.hrMemo, true)}
+
+                            <div class="col-span-2 my-2 border-t border-gray-200"></div>
+                            
+                            <!-- สิทธิวันลา (ณ วันที่ขอ) -->
+                            <div class="col-span-2 text-xs font-semibold text-gray-500 mb-1">สิทธิวันลา (ณ วันที่ขอ)</div>
+                            ${getDetailRow('สิทธิลากิจ', formatLeaveDay(item.rightsPersonal || 0))}
+                            ${getDetailRow('สิทธิลาป่วย', formatLeaveDay(item.rightsSick || 0))}
+                            ${getDetailRow('สิทธิลาพักร้อน', formatLeaveDay(item.rightsVacation || 0))}
                         </div>
                     </div>
                 `,
                 confirmButtonText: 'ปิด',
                 confirmButtonColor: '#e27d60',
                 customClass: {
-                    popup: 'rounded-2xl soft-shadow'
+                    popup: 'rounded-2xl soft-shadow w-full max-w-lg'
                 }
             });
         }
@@ -478,7 +541,6 @@
 
             const d = currentFlexData.details;
             // Map details to Flex Bubble structure
-            // Note: Simplifying for brevity, assuming standard structure
             const bubble = {
                 type: "bubble",
                 size: "mega",
@@ -506,13 +568,14 @@
             };
 
             function createFlexRow(label, value, color) {
+                // ใช้ formatLeaveDay เพื่อให้ format ตรงกันกับหน้าเว็บ
                 return {
                     type: "box",
                     layout: "horizontal",
                     margin: "md",
                     contents: [
                         { type: "text", text: label, size: "sm", color: "#555555", flex: 3 },
-                        { type: "text", text: String(value), size: "xl", color: color, weight: "bold", align: "end", flex: 2 }
+                        { type: "text", text: String(formatLeaveDay(value)), size: "xl", color: color, weight: "bold", align: "end", flex: 2 }
                     ]
                 };
             }
