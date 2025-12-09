@@ -171,11 +171,13 @@
         </div>
     </template>
 
-    <!-- Template: Leave Rights Card (Flex Style) -->
+    <!-- Template: Leave Rights Card (New Design) -->
     <template id="tpl-rights">
         <div class="bg-white rounded-2xl soft-shadow p-6 relative overflow-hidden">
+            <!-- Background Decoration -->
             <div class="absolute top-0 right-0 w-32 h-32 bg-orange-100 rounded-full -mr-16 -mt-16 opacity-50"></div>
             
+            <!-- Employee Info Header -->
             <div class="relative z-10 mb-6 text-center">
                 <div class="w-20 h-20 bg-gray-200 rounded-full mx-auto mb-3 overflow-hidden border-4 border-white shadow-md">
                     <img src="https://ui-avatars.com/api/?name=User&background=random" id="emp-img" alt="Profile" class="w-full h-full object-cover">
@@ -185,47 +187,85 @@
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <!-- Sick Leave -->
-                <div class="bg-red-50 p-4 rounded-xl border border-red-100 hover-card smooth-transition">
-                    <div class="flex justify-between items-center mb-2">
-                        <h3 class="font-semibold text-red-700">ลาป่วย</h3>
-                        <i class="fas fa-procedures text-red-300"></i>
-                    </div>
-                    <div class="text-3xl font-bold text-red-600 mb-1" id="sick-remain">0</div>
-                    <div class="text-xs text-red-400 flex justify-between">
-                        <span>ทั้งหมด <span id="sick-total">0</span></span>
-                        <span>ใช้ไป <span id="sick-used">0</span></span>
+                <!-- Sick Leave (Red) -->
+                <div class="bg-red-50 p-5 rounded-2xl border border-red-100 hover-card smooth-transition relative overflow-hidden group">
+                    <div class="relative z-10">
+                        <!-- Header: Icon + Title -->
+                        <div class="flex items-center gap-3 mb-4">
+                            <i class="fas fa-procedures text-4xl text-red-400"></i>
+                            <h3 class="text-xl font-bold text-red-700">ลาป่วย</h3>
+                        </div>
+                        <!-- Details -->
+                        <div class="space-y-1 pl-1">
+                            <div class="flex justify-between items-center text-sm text-red-600/80">
+                                <span>สิทธิการลา</span>
+                                <span class="font-semibold" id="sick-total">0</span>
+                            </div>
+                            <div class="flex justify-between items-center text-sm text-red-600/80">
+                                <span>ใช้ไป</span>
+                                <span class="font-semibold" id="sick-used">0</span>
+                            </div>
+                            <div class="pt-2 mt-2 border-t border-red-200 flex flex-col items-end">
+                                <span class="text-xs text-red-500 font-medium">คงเหลือ</span>
+                                <span class="text-5xl font-bold text-red-600 tracking-tight" id="sick-remain">0</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Personal Leave -->
-                <div class="bg-blue-50 p-4 rounded-xl border border-blue-100 hover-card smooth-transition">
-                    <div class="flex justify-between items-center mb-2">
-                        <h3 class="font-semibold text-blue-700">ลากิจ</h3>
-                        <i class="fas fa-briefcase text-blue-300"></i>
-                    </div>
-                    <div class="text-3xl font-bold text-blue-600 mb-1" id="personal-remain">0</div>
-                    <div class="text-xs text-blue-400 flex justify-between">
-                        <span>ทั้งหมด <span id="personal-total">0</span></span>
-                        <span>ใช้ไป <span id="personal-used">0</span></span>
+                <!-- Personal Leave (Blue) -->
+                <div class="bg-blue-50 p-5 rounded-2xl border border-blue-100 hover-card smooth-transition relative overflow-hidden group">
+                    <div class="relative z-10">
+                        <!-- Header: Icon + Title -->
+                        <div class="flex items-center gap-3 mb-4">
+                            <i class="fas fa-briefcase text-4xl text-blue-400"></i>
+                            <h3 class="text-xl font-bold text-blue-700">ลากิจ</h3>
+                        </div>
+                        <!-- Details -->
+                        <div class="space-y-1 pl-1">
+                            <div class="flex justify-between items-center text-sm text-blue-600/80">
+                                <span>สิทธิการลา</span>
+                                <span class="font-semibold" id="personal-total">0</span>
+                            </div>
+                            <div class="flex justify-between items-center text-sm text-blue-600/80">
+                                <span>ใช้ไป</span>
+                                <span class="font-semibold" id="personal-used">0</span>
+                            </div>
+                            <div class="pt-2 mt-2 border-t border-blue-200 flex flex-col items-end">
+                                <span class="text-xs text-blue-500 font-medium">คงเหลือ</span>
+                                <span class="text-5xl font-bold text-blue-600 tracking-tight" id="personal-remain">0</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Vacation Leave -->
-                <div class="bg-green-50 p-4 rounded-xl border border-green-100 hover-card smooth-transition">
-                    <div class="flex justify-between items-center mb-2">
-                        <h3 class="font-semibold text-green-700">พักร้อน</h3>
-                        <i class="fas fa-umbrella-beach text-green-300"></i>
-                    </div>
-                    <div class="text-3xl font-bold text-green-600 mb-1" id="vacation-remain">0</div>
-                    <div class="text-xs text-green-400 flex justify-between">
-                        <span>ทั้งหมด <span id="vacation-total">0</span></span>
-                        <span>ใช้ไป <span id="vacation-used">0</span></span>
+                <!-- Vacation Leave (Green) -->
+                <div class="bg-green-50 p-5 rounded-2xl border border-green-100 hover-card smooth-transition relative overflow-hidden group">
+                    <div class="relative z-10">
+                        <!-- Header: Icon + Title -->
+                        <div class="flex items-center gap-3 mb-4">
+                            <i class="fas fa-umbrella-beach text-4xl text-green-400"></i>
+                            <h3 class="text-xl font-bold text-green-700">พักร้อน</h3>
+                        </div>
+                        <!-- Details -->
+                        <div class="space-y-1 pl-1">
+                            <div class="flex justify-between items-center text-sm text-green-600/80">
+                                <span>สิทธิการลา</span>
+                                <span class="font-semibold" id="vacation-total">0</span>
+                            </div>
+                            <div class="flex justify-between items-center text-sm text-green-600/80">
+                                <span>ใช้ไป</span>
+                                <span class="font-semibold" id="vacation-used">0</span>
+                            </div>
+                            <div class="pt-2 mt-2 border-t border-green-200 flex flex-col items-end">
+                                <span class="text-xs text-green-500 font-medium">คงเหลือ</span>
+                                <span class="text-5xl font-bold text-green-600 tracking-tight" id="vacation-remain">0</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
             
-            <!-- Hidden Button (We don't show manual send button anymore as per requirement) -->
             <button id="btn-send-line" class="hidden"></button>
         </div>
     </template>
@@ -422,21 +462,23 @@
             clone.querySelector('#emp-img').src = `https://ui-avatars.com/api/?name=${data.employee}&background=e27d60&color=fff`;
 
             // Map data details
+            // ใช้ .find โดยดูจาก Label ภาษาไทยที่ส่งมาจาก Backend
             const personal = data.details.find(d => d.label === 'ลากิจ') || {remain:0, total:0, used:0};
             const sick = data.details.find(d => d.label === 'ลาป่วย') || {remain:0, total:0, used:0};
             const vacation = data.details.find(d => d.label === 'พักร้อน') || {remain:0, total:0, used:0};
 
-            // Sick
+            // Sick Mapping (ลาป่วย -> ID: sick-xxx)
             clone.querySelector('#sick-remain').textContent = formatLeaveDay(sick.remain);
             clone.querySelector('#sick-total').textContent = formatLeaveDay(sick.total);
             clone.querySelector('#sick-used').textContent = formatLeaveDay(sick.used);
 
-            // Personal
+            // Personal Mapping (ลากิจ -> ID: personal-xxx)
+            // ตรวจสอบให้แน่ใจว่าตัวแปร personal ถูก map ไปยัง personal-xxx จริงๆ
             clone.querySelector('#personal-remain').textContent = formatLeaveDay(personal.remain);
             clone.querySelector('#personal-total').textContent = formatLeaveDay(personal.total);
             clone.querySelector('#personal-used').textContent = formatLeaveDay(personal.used);
 
-            // Vacation
+            // Vacation Mapping (พักร้อน -> ID: vacation-xxx)
             clone.querySelector('#vacation-remain').textContent = formatLeaveDay(vacation.remain);
             clone.querySelector('#vacation-total').textContent = formatLeaveDay(vacation.total);
             clone.querySelector('#vacation-used').textContent = formatLeaveDay(vacation.used);
