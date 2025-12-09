@@ -31,7 +31,7 @@
 
         body {
             font-family: 'Prompt', sans-serif;
-            background-color: #f8f9fa;
+            background-color: #eaecf0; /* ปรับพื้นหลังให้เข้มขึ้นเล็กน้อย เพื่อตัดกับการ์ดสีขาว */
             color: var(--text-primary);
             min-height: 100vh;
             display: flex;
@@ -118,9 +118,7 @@
     <header class="bg-terracotta-gradient text-white p-6 shadow-lg relative z-10">
         <div class="container mx-auto max-w-4xl text-center">
             <h1 class="text-2xl md:text-3xl font-bold mb-2 text-shadow-sm">สอบถามใบลา อัตโนมัติ</h1>
-            <p class="text-white/90 text-sm md:text-base font-light">
-                <i class="fas fa-info-circle mr-1"></i> หากต้องการติดต่องานบุคคล โปรดติดต่อ HR โดยตรง
-            </p>
+            <!-- ลบข้อความ subtitle ออกแล้ว -->
         </div>
     </header>
 
@@ -140,8 +138,8 @@
 
         <!-- Empty State (Placeholder) -->
         <div id="empty-state" class="hidden text-center py-12">
-            <i class="fas fa-clipboard-list text-6xl text-gray-200 mb-4"></i>
-            <p class="text-gray-400 text-lg">ไม่พบข้อมูลใบลา</p>
+            <i class="fas fa-clipboard-list text-6xl text-gray-400 mb-4"></i>
+            <p class="text-gray-500 text-lg">ไม่พบข้อมูลใบลา</p>
         </div>
 
     </main>
@@ -179,8 +177,8 @@
             
             <!-- Employee Info Header -->
             <div class="relative z-10 mb-6 text-center">
-                <div class="w-20 h-20 bg-gray-200 rounded-full mx-auto mb-3 overflow-hidden border-4 border-white shadow-md">
-                    <img src="https://ui-avatars.com/api/?name=User&background=random" id="emp-img" alt="Profile" class="w-full h-full object-cover">
+                <div class="w-24 h-24 bg-gray-200 rounded-full mx-auto mb-3 overflow-hidden border-4 border-white shadow-md">
+                    <img src="" id="emp-img" alt="Profile" class="w-full h-full object-cover">
                 </div>
                 <h2 class="text-xl font-bold text-gray-800" id="emp-name">-</h2>
                 <p class="text-sm text-gray-500"><span id="emp-pos">-</span> | <span id="emp-dept">-</span></p>
@@ -277,6 +275,7 @@
 
         // Global Data Storage
         let currentFlexData = null;
+        let userProfile = null; // เก็บข้อมูล Profile จาก LINE
 
         // --- INIT ---
         document.addEventListener('DOMContentLoaded', async () => {
@@ -295,18 +294,16 @@
 
                 // Get URL Params (action)
                 const urlParams = new URLSearchParams(window.location.search);
-                // Default action เป็น "balance" (ภาษาอังกฤษ)
                 let action = urlParams.get('action');
 
                 // Fallback / Auto-map
                 if (!action) action = 'balance';
-                
-                // เผื่อมีภาษาไทยหลงมา ก็แปลงเป็นอังกฤษให้
                 if (action === 'ใบลา') action = 'history';
                 if (action === 'สิทธิการลา') action = 'balance';
 
                 // Get User Profile
                 const profile = await liff.getProfile();
+                userProfile = profile; // เก็บข้อมูล Profile ไว้ใช้
                 const lineId = profile.userId;
 
                 // Call Backend
@@ -361,8 +358,6 @@
                     renderLeaveRights(result.data);
                     
                     // --- AUTO SEND FLEX MESSAGE LOGIC ---
-                    // ถ้าเปิดใน LIFF (มือถือ) ให้ส่ง Flex ทันที
-                    // ถ้าเปิดใน Browser ให้แสดงผลเฉยๆ (ไม่ต้องส่ง)
                     if (liff.isInClient()) {
                         setTimeout(() => {
                              sendFlexMessage(true); // true = silent mode
@@ -459,26 +454,30 @@
             clone.querySelector('#emp-name').textContent = data.employee;
             clone.querySelector('#emp-pos').textContent = data.position;
             clone.querySelector('#emp-dept').textContent = data.department;
-            clone.querySelector('#emp-img').src = `https://ui-avatars.com/api/?name=${data.employee}&background=e27d60&color=fff`;
+            
+            // Set Profile Image (Use LINE Profile if available, else placeholder)
+            const imgUrl = (userProfile && userProfile.pictureUrl) 
+                            ? userProfile.pictureUrl 
+                            : `https://ui-avatars.com/api/?name=${data.employee}&background=e27d60&color=fff`;
+            
+            clone.querySelector('#emp-img').src = imgUrl;
 
             // Map data details
-            // ใช้ .find โดยดูจาก Label ภาษาไทยที่ส่งมาจาก Backend
             const personal = data.details.find(d => d.label === 'ลากิจ') || {remain:0, total:0, used:0};
             const sick = data.details.find(d => d.label === 'ลาป่วย') || {remain:0, total:0, used:0};
             const vacation = data.details.find(d => d.label === 'พักร้อน') || {remain:0, total:0, used:0};
 
-            // Sick Mapping (ลาป่วย -> ID: sick-xxx)
+            // Sick Mapping
             clone.querySelector('#sick-remain').textContent = formatLeaveDay(sick.remain);
             clone.querySelector('#sick-total').textContent = formatLeaveDay(sick.total);
             clone.querySelector('#sick-used').textContent = formatLeaveDay(sick.used);
 
-            // Personal Mapping (ลากิจ -> ID: personal-xxx)
-            // ตรวจสอบให้แน่ใจว่าตัวแปร personal ถูก map ไปยัง personal-xxx จริงๆ
+            // Personal Mapping
             clone.querySelector('#personal-remain').textContent = formatLeaveDay(personal.remain);
             clone.querySelector('#personal-total').textContent = formatLeaveDay(personal.total);
             clone.querySelector('#personal-used').textContent = formatLeaveDay(personal.used);
 
-            // Vacation Mapping (พักร้อน -> ID: vacation-xxx)
+            // Vacation Mapping
             clone.querySelector('#vacation-remain').textContent = formatLeaveDay(vacation.remain);
             clone.querySelector('#vacation-total').textContent = formatLeaveDay(vacation.total);
             clone.querySelector('#vacation-used').textContent = formatLeaveDay(vacation.used);
