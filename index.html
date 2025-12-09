@@ -1,601 +1,156 @@
-<!DOCTYPE html>
-<html lang="th">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ระบบจัดการใบลาแบบอัตโนมัติ</title>
+const SSID = "10S3cWJDWObPYvkUMdimS_Ilm0oxIDIdpH-sznWzoolQ"; // ID ของ Google Sheet
+
+// เพิ่มฟังก์ชัน doGet เพื่อแก้ปัญหา Script function not found: doGet
+function doGet(e) {
+  const output = ContentService.createTextOutput();
+  output.setMimeType(ContentService.MimeType.JSON);
+  // ส่งข้อความกลับไปบอกว่า API ทำงานอยู่
+  return output.setContent(JSON.stringify({ 
+    status: "success", 
+    message: "API is running. Please use POST method to fetch data." 
+  }));
+}
+
+function doPost(e) {
+  // แก้ปัญหา CORS และตั้งค่า Output เป็น JSON
+  const output = ContentService.createTextOutput();
+  output.setMimeType(ContentService.MimeType.JSON);
+
+  try {
+    // ตรวจสอบว่ามีข้อมูลส่งมาหรือไม่
+    if (!e.postData || !e.postData.contents) {
+      throw new Error("ไม่พบข้อมูล Post Data");
+    }
+
+    // รับข้อมูล Parameter จาก Frontend
+    const data = JSON.parse(e.postData.contents);
+    const action = data.action;
+    const lineId = data.lineId;
+
+    if (!lineId) throw new Error("ไม่พบ Line ID");
+
+    const ss = SpreadsheetApp.openById(SSID);
     
-    <!-- Font: Prompt -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600&display=swap" rel="stylesheet">
+    // 1. ดึงข้อมูลพนักงานจาก LineID
+    const employeeSheet = ss.getSheetByName("พนักงาน");
+    if (!employeeSheet) throw new Error("ไม่พบ Sheet 'พนักงาน'");
+
+    const empData = employeeSheet.getDataRange().getValues();
+    // Headers: LineID(0), Email(1), HeadEmail(2), Prefix(3), Name(4), Surname(5)...
     
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    let empRow = null;
+    let empEmail = "";
     
-    <!-- SweetAlert2 -->
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    
-    <!-- LIFF SDK -->
-    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    for (let i = 1; i < empData.length; i++) {
+      // แปลงเป็น String เพื่อป้องกัน Error หาก Cell เป็นตัวเลข
+      if (String(empData[i][0]) === String(lineId)) {
+        empRow = empData[i];
+        empEmail = empData[i][1]; // Email พนักงาน
+        break;
+      }
+    }
 
-    <!-- Font Awesome (Icons) -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    if (!empRow) {
+      return output.setContent(JSON.stringify({ status: "error", message: "ไม่พบข้อมูลพนักงานในระบบ (LineID ไม่ตรง)" }));
+    }
 
-    <style>
-        :root {
-            --terracotta-start: #cc563d;
-            --terracotta-end: #f08a5d;
-            --text-primary: #333333;
+    // สร้าง Object ข้อมูลพนักงาน
+    const empObj = {
+      lineId: empRow[0],
+      email: empRow[1],
+      fullName: `${empRow[3]}${empRow[6]} ${empRow[7]}`, // Title + Name + Surname
+      position: empRow[9],
+      department: empRow[10],
+      rights: {
+        personal: empRow[12] || 0, // สิทธิลากิจ
+        sick: empRow[13] || 0,     // สิทธิลาป่วย
+        vacation: empRow[14] || 0  // สิทธิพักร้อน
+      },
+      used: {
+        personal: empRow[15] || 0, // ลากิจที่ใช้ไป (อนุมัติแล้ว)
+        sick: empRow[16] || 0,     // ลาป่วยที่ใช้ไป (อนุมัติแล้ว)
+        vacation: empRow[17] || 0  // ลาพักร้อนที่ใช้ไป (อนุมัติแล้ว)
+      }
+    };
+
+    // --- CASE 1: ขอประวัติใบลา (history) ---
+    if (action === "history") {
+      const reqSheet = ss.getSheetByName("ใบคำขอ");
+      if (!reqSheet) throw new Error("ไม่พบ Sheet 'ใบคำขอ'");
+      
+      const reqData = reqSheet.getDataRange().getDisplayValues(); // ใช้ DisplayValues เพื่อให้วันที่เป็น String
+      const history = [];
+
+      // Loop หาใบลาที่ Email ตรงกับพนักงานคนนี้
+      // Headers Request: Timestamp(0), ReqID(1), Email(2)...
+      for (let i = 1; i < reqData.length; i++) {
+        if (reqData[i][2] === empEmail) {
+          history.push({
+            timestamp: reqData[i][0],
+            reqId: reqData[i][1],
+            email: reqData[i][2],
+            fullName: reqData[i][3],
+            position: reqData[i][4],
+            dept: reqData[i][5],
+            startDate: reqData[i][6],
+            endDate: reqData[i][7],
+            type: reqData[i][8],
+            reason: reqData[i][9],
+            docs: reqData[i][10],
+            status: reqData[i][11],
+            managerNote: reqData[i][14], // หัวหน้า-บันทึก
+            hrMemo: reqData[i][17],      // HR-Memo
+            totalDays: reqData[i][18],
+            rightsPersonal: reqData[i][19], // สิทธิลากิจ ณ วันที่ขอ
+            rightsSick: reqData[i][20],     // สิทธิลาป่วย ณ วันที่ขอ
+            rightsVacation: reqData[i][21]  // สิทธิลาพักร้อน ณ วันที่ขอ
+          });
         }
-
-        body {
-            font-family: 'Prompt', sans-serif;
-            background-color: #f8f9fa;
-            color: var(--text-primary);
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        /* Terracotta Gradient Header */
-        .bg-terracotta-gradient {
-            background: linear-gradient(135deg, var(--terracotta-start) 0%, var(--terracotta-end) 100%);
-        }
-
-        /* Smooth Scroll & Animations */
-        .smooth-transition {
-            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-        }
-
-        /* Card Hover Effect */
-        .hover-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 20px rgba(204, 86, 61, 0.15);
-        }
-
-        /* Soft Shadow */
-        .soft-shadow {
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
-        }
-
-        /* Ripple Effect Logic via CSS/JS handled on click usually, using active state here */
-        .btn-ripple:active {
-            transform: scale(0.96);
-        }
-
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #e27d60;
-            border-radius: 10px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #f1f1f1;
-        }
-
-        /* Loader Animation */
-        .loader {
-            border: 4px solid #f3f3f3;
-            border-radius: 50%;
-            border-top: 4px solid var(--terracotta-start);
-            width: 40px;
-            height: 40px;
-            -webkit-animation: spin 1s linear infinite; /* Safari */
-            animation: spin 1s linear infinite;
-            margin: 0 auto;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .fade-in {
-            animation: fadeIn 0.5s ease-in-out;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        /* --- CSS สำหรับสีสถานะ (Status Colors) --- */
-        .status-badge {
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            font-weight: 500;
-        }
-    </style>
-</head>
-<body>
-
-    <!-- Header Section -->
-    <header class="bg-terracotta-gradient text-white p-6 shadow-lg relative z-10">
-        <div class="container mx-auto max-w-4xl text-center">
-            <h1 class="text-2xl md:text-3xl font-bold mb-2 text-shadow-sm">ระบบจัดการใบลาแบบอัตโนมัติ</h1>
-            <p class="text-white/90 text-sm md:text-base font-light">
-                <i class="fas fa-info-circle mr-1"></i> หากต้องการติดต่องานบุคคล โปรดติดต่อ HR โดยตรง
-            </p>
-        </div>
-    </header>
-
-    <!-- Main Content -->
-    <main class="flex-grow container mx-auto max-w-4xl p-4 -mt-4 relative z-20">
-        
-        <!-- Loading State -->
-        <div id="loading" class="hidden bg-white p-8 rounded-2xl soft-shadow text-center mt-8">
-            <div class="loader mb-4"></div>
-            <p class="text-gray-500 animate-pulse">กำลังโหลดข้อมูล...</p>
-        </div>
-
-        <!-- Content Area -->
-        <div id="content-area" class="fade-in hidden space-y-6 pb-20">
-            <!-- Dynamic Content Injected Here -->
-        </div>
-
-        <!-- Empty State (Placeholder) -->
-        <div id="empty-state" class="hidden text-center py-12">
-            <i class="fas fa-clipboard-list text-6xl text-gray-200 mb-4"></i>
-            <p class="text-gray-400 text-lg">ไม่พบข้อมูลใบลา</p>
-        </div>
-
-    </main>
-
-    <!-- Footer Disclaimer -->
-    <footer class="text-center p-6 text-xs text-gray-400">
-        <p>หมายเหตุ: ข้อมูลในระบบเป็นการแสดงผลเบื้องต้น โปรดตรวจสอบความถูกต้องกับ HR อีกครั้งหากมีข้อสงสัย</p>
-    </footer>
-
-    <!-- Templates for Render -->
-    <!-- Template: Leave History as Cards Grid -->
-    <template id="tpl-history-grid">
-        <div class="space-y-4">
-            <div class="flex justify-between items-center mb-2 px-2">
-                <h2 class="text-lg font-semibold text-gray-700">
-                    <i class="fas fa-history mr-2 text-orange-500"></i>ประวัติการลา
-                </h2>
-                <span id="user-name-display" class="text-sm text-gray-500 font-medium"></span>
-            </div>
-            <!-- Grid Container -->
-            <div id="history-list" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <!-- JS Loops Cards Here -->
-            </div>
-            <div class="text-xs text-gray-400 text-center mt-4">
-                * ข้อมูลเรียงตามเลขที่ใบคำขอ (ล่าสุดขึ้นก่อน)
-            </div>
-        </div>
-    </template>
-
-    <!-- Template: Leave Rights Card (Flex Style) -->
-    <template id="tpl-rights">
-        <div class="bg-white rounded-2xl soft-shadow p-6 relative overflow-hidden">
-            <div class="absolute top-0 right-0 w-32 h-32 bg-orange-100 rounded-full -mr-16 -mt-16 opacity-50"></div>
-            
-            <div class="relative z-10 mb-6 text-center">
-                <div class="w-20 h-20 bg-gray-200 rounded-full mx-auto mb-3 overflow-hidden border-4 border-white shadow-md">
-                    <img src="https://ui-avatars.com/api/?name=User&background=random" id="emp-img" alt="Profile" class="w-full h-full object-cover">
-                </div>
-                <h2 class="text-xl font-bold text-gray-800" id="emp-name">-</h2>
-                <p class="text-sm text-gray-500"><span id="emp-pos">-</span> | <span id="emp-dept">-</span></p>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <!-- Sick Leave -->
-                <div class="bg-red-50 p-4 rounded-xl border border-red-100 hover-card smooth-transition">
-                    <div class="flex justify-between items-center mb-2">
-                        <h3 class="font-semibold text-red-700">ลาป่วย</h3>
-                        <i class="fas fa-procedures text-red-300"></i>
-                    </div>
-                    <div class="text-3xl font-bold text-red-600 mb-1" id="sick-remain">0</div>
-                    <div class="text-xs text-red-400 flex justify-between">
-                        <span>ทั้งหมด <span id="sick-total">0</span></span>
-                        <span>ใช้ไป <span id="sick-used">0</span></span>
-                    </div>
-                </div>
-
-                <!-- Personal Leave -->
-                <div class="bg-blue-50 p-4 rounded-xl border border-blue-100 hover-card smooth-transition">
-                    <div class="flex justify-between items-center mb-2">
-                        <h3 class="font-semibold text-blue-700">ลากิจ</h3>
-                        <i class="fas fa-briefcase text-blue-300"></i>
-                    </div>
-                    <div class="text-3xl font-bold text-blue-600 mb-1" id="personal-remain">0</div>
-                    <div class="text-xs text-blue-400 flex justify-between">
-                        <span>ทั้งหมด <span id="personal-total">0</span></span>
-                        <span>ใช้ไป <span id="personal-used">0</span></span>
-                    </div>
-                </div>
-
-                <!-- Vacation Leave -->
-                <div class="bg-green-50 p-4 rounded-xl border border-green-100 hover-card smooth-transition">
-                    <div class="flex justify-between items-center mb-2">
-                        <h3 class="font-semibold text-green-700">พักร้อน</h3>
-                        <i class="fas fa-umbrella-beach text-green-300"></i>
-                    </div>
-                    <div class="text-3xl font-bold text-green-600 mb-1" id="vacation-remain">0</div>
-                    <div class="text-xs text-green-400 flex justify-between">
-                        <span>ทั้งหมด <span id="vacation-total">0</span></span>
-                        <span>ใช้ไป <span id="vacation-used">0</span></span>
-                    </div>
-                </div>
-            </div>
-            
-            <button id="btn-send-line" onclick="sendFlexMessage()" class="hidden mt-6 w-full bg-terracotta-gradient text-white py-3 rounded-xl shadow-lg btn-ripple smooth-transition font-medium hover:opacity-90">
-                <i class="fab fa-line mr-2"></i> ส่งข้อมูลเข้าแชท LINE (Manual)
-            </button>
-        </div>
-    </template>
-
-    <script>
-        // --- CONFIGURATION ---
-        const GAS_API_URL = 'https://script.google.com/macros/s/AKfycbzZL0KZQyd7gIsip_fkiVcIk8xOyoojfmP5CAWU-zW79Nua_112N4g4Ti6lFkJBmTi0OA/exec';
-        const LIFF_ID = '2008647384-Oy59agYa';
-
-        // Global Data Storage
-        let currentFlexData = null;
-
-        // --- INIT ---
-        document.addEventListener('DOMContentLoaded', async () => {
-            await initLiff();
-        });
-
-        async function initLiff() {
-            try {
-                // Initialize LIFF
-                await liff.init({ liffId: LIFF_ID });
-                
-                if (!liff.isLoggedIn()) {
-                    liff.login();
-                    return;
-                }
-
-                // Get URL Params (action)
-                const urlParams = new URLSearchParams(window.location.search);
-                // Default action เป็น "balance" (ภาษาอังกฤษ)
-                let action = urlParams.get('action');
-
-                // Fallback / Auto-map
-                if (!action) action = 'balance';
-                
-                // เผื่อมีภาษาไทยหลงมา ก็แปลงเป็นอังกฤษให้
-                if (action === 'ใบลา') action = 'history';
-                if (action === 'สิทธิการลา') action = 'balance';
-
-                // Get User Profile
-                const profile = await liff.getProfile();
-                const lineId = profile.userId;
-
-                // Call Backend
-                fetchData(action, lineId);
-
-            } catch (error) {
-                console.error("LIFF Error or Local Test:", error);
-                // Fallback for Local Testing
-                if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
-                    Swal.fire('Info', 'Running in Local Mode.', 'info');
-                } else {
-                    Swal.fire('Error', 'ไม่สามารถเชื่อมต่อ LINE ได้: ' + error.message, 'error');
-                }
-            }
-        }
-
-        // --- API HANDLER ---
-        async function fetchData(action, lineId) {
-            showLoading(true);
-            const contentArea = document.getElementById('content-area');
-            const emptyState = document.getElementById('empty-state');
-            contentArea.innerHTML = '';
-            contentArea.classList.add('hidden');
-            emptyState.classList.add('hidden');
-
-            try {
-                // Prepare Payload
-                const payload = {
-                    action: action, // ส่งเป็น 'history' หรือ 'balance'
-                    lineId: lineId
-                };
-
-                const response = await fetch(GAS_API_URL, {
-                    method: 'POST',
-                    mode: 'cors', 
-                    body: JSON.stringify(payload)
-                });
-
-                const result = await response.json();
-
-                if (result.status !== 'success') {
-                    throw new Error(result.message);
-                }
-
-                showLoading(false);
-                contentArea.classList.remove('hidden');
-
-                if (action === 'history') {
-                    renderLeaveHistoryCards(result.data, result.empInfo);
-                } else if (action === 'balance') {
-                    currentFlexData = result.data; // Store for sending to chat
-                    renderLeaveRights(result.data);
-                    
-                    // --- AUTO SEND FLEX MESSAGE ---
-                    setTimeout(() => {
-                         sendFlexMessage(true); // true = silent mode
-                    }, 500);
-                }
-
-            } catch (error) {
-                showLoading(false);
-                Swal.fire({
-                    icon: 'error',
-                    title: 'เกิดข้อผิดพลาด',
-                    text: error.message,
-                    confirmButtonColor: '#e27d60'
-                });
-            }
-        }
-
-        // --- RENDER FUNCTIONS ---
-
-        function renderLeaveHistoryCards(data, empInfo) {
-            if (!data || data.length === 0) {
-                document.getElementById('empty-state').classList.remove('hidden');
-                return;
-            }
-
-            const tpl = document.getElementById('tpl-history-grid');
-            const clone = tpl.content.cloneNode(true);
-
-            clone.querySelector('#user-name-display').textContent = empInfo.fullName;
-            const container = clone.querySelector('#history-list');
-
-            // เรียงลำดับข้อมูล reqId จากมากไปน้อย
-            data.sort((a, b) => String(b.reqId).localeCompare(String(a.reqId), undefined, {numeric: true}));
-
-            data.forEach(item => {
-                // --- Status Logic ---
-                let statusClass = 'bg-yellow-100 text-yellow-800'; 
-                let statusText = item.status || 'รอตรวจสอบ';
-
-                if (statusText.includes('HR รับทราบและลงระบบแล้ว')) {
-                    statusClass = 'bg-green-600 text-white'; // เขียวเข้ม
-                } else if (statusText.includes('ยกเลิกใบคำขอ')) {
-                    statusClass = 'bg-gray-700 text-white'; // สีเทาเข้ม
-                } else if (statusText.includes('ไม่อนุมัติ')) {
-                    statusClass = 'bg-red-100 text-red-800'; // สีแดงอ่อน
-                } else if (statusText.includes('อนุมัติการลา')) {
-                    statusClass = 'bg-green-100 text-green-800'; // สีเขียวอ่อน
-                }
-
-                // Create Card
-                const card = document.createElement('div');
-                card.className = "bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover-card transition-all duration-300 relative overflow-hidden";
-                card.innerHTML = `
-                    <div class="flex justify-between items-start mb-3">
-                        <div class="flex flex-col">
-                            <span class="text-xs text-gray-400 font-light">เลขที่ใบคำขอ</span>
-                            <span class="text-lg font-bold text-gray-800">#${item.reqId}</span>
-                        </div>
-                        <span class="px-3 py-1 rounded-full text-xs font-semibold ${statusClass}">${statusText}</span>
-                    </div>
-                    
-                    <div class="space-y-2 mb-4">
-                        <div class="flex items-center text-sm text-gray-600">
-                            <i class="far fa-calendar-alt w-6 text-orange-400"></i>
-                            <span class="font-medium">${item.startDate}</span>
-                        </div>
-                        <div class="flex items-center text-sm text-gray-600">
-                            <i class="fas fa-clock w-6 text-orange-400"></i>
-                            <span>${formatLeaveDay(item.totalDays)} วัน</span>
-                        </div>
-                         <div class="flex items-center text-sm text-gray-600">
-                            <i class="fas fa-tag w-6 text-orange-400"></i>
-                            <span>${item.type}</span>
-                        </div>
-                    </div>
-
-                    <button class="w-full py-2 bg-orange-50 text-orange-600 rounded-lg text-sm font-medium hover:bg-orange-100 transition-colors"
-                        onclick='viewDetails(${JSON.stringify(item)})'>
-                        ดูรายละเอียด
-                    </button>
-                `;
-                container.appendChild(card);
-            });
-
-            document.getElementById('content-area').appendChild(clone);
-        }
-
-        function renderLeaveRights(data) {
-            const tpl = document.getElementById('tpl-rights');
-            const clone = tpl.content.cloneNode(true);
-
-            // Set Employee Info
-            clone.querySelector('#emp-name').textContent = data.employee;
-            clone.querySelector('#emp-pos').textContent = data.position;
-            clone.querySelector('#emp-dept').textContent = data.department;
-            clone.querySelector('#emp-img').src = `https://ui-avatars.com/api/?name=${data.employee}&background=e27d60&color=fff`;
-
-            // Map data details
-            const personal = data.details.find(d => d.label === 'ลากิจ') || {remain:0, total:0, used:0};
-            const sick = data.details.find(d => d.label === 'ลาป่วย') || {remain:0, total:0, used:0};
-            const vacation = data.details.find(d => d.label === 'พักร้อน') || {remain:0, total:0, used:0};
-
-            // Sick
-            clone.querySelector('#sick-remain').textContent = formatLeaveDay(sick.remain);
-            clone.querySelector('#sick-total').textContent = formatLeaveDay(sick.total);
-            clone.querySelector('#sick-used').textContent = formatLeaveDay(sick.used);
-
-            // Personal
-            clone.querySelector('#personal-remain').textContent = formatLeaveDay(personal.remain);
-            clone.querySelector('#personal-total').textContent = formatLeaveDay(personal.total);
-            clone.querySelector('#personal-used').textContent = formatLeaveDay(personal.used);
-
-            // Vacation
-            clone.querySelector('#vacation-remain').textContent = formatLeaveDay(vacation.remain);
-            clone.querySelector('#vacation-total').textContent = formatLeaveDay(vacation.total);
-            clone.querySelector('#vacation-used').textContent = formatLeaveDay(vacation.used);
-
-            document.getElementById('content-area').appendChild(clone);
-        }
-
-        // --- UTILS ---
-
-        function showLoading(isLoading) {
-            const loader = document.getElementById('loading');
-            if (isLoading) loader.classList.remove('hidden');
-            else loader.classList.add('hidden');
-        }
-
-        function formatLeaveDay(val) {
-            const num = Number(val);
-            if (isNaN(num)) return val || '0';
-            return parseFloat(num.toFixed(2));
-        }
-
-        function getDetailRow(label, value, fullWidth = false) {
-            const valDisplay = value || '-';
-            const colClass = fullWidth ? 'col-span-2' : 'col-span-1';
-            return `
-                <div class="${colClass} flex flex-col border-b border-gray-100 pb-2">
-                    <span class="text-xs text-gray-400 mb-1">${label}</span>
-                    <span class="text-sm font-medium text-gray-800 break-words">${valDisplay}</span>
-                </div>
-            `;
-        }
-
-        function viewDetails(item) {
-            Swal.fire({
-                title: `<div class="text-xl font-bold text-gray-700 flex flex-col items-center">
-                            <span class="text-sm font-normal text-gray-400 mb-1">รายละเอียดใบคำขอ</span>
-                            <span>#${item.reqId}</span>
-                        </div>`,
-                html: `
-                    <div class="text-left bg-gray-50 p-4 rounded-xl max-h-[60vh] overflow-y-auto custom-scrollbar">
-                        <div class="grid grid-cols-2 gap-x-4 gap-y-3">
-                            <!-- ข้อมูลคำขอ -->
-                            ${getDetailRow('วันที่ยื่น', item.timestamp)}
-                            ${getDetailRow('เลขที่ใบคำขอ', item.reqId)}
-                            
-                            <!-- ข้อมูลพนักงาน -->
-                            ${getDetailRow('ชื่อ-สกุล', item.fullName)}
-                            ${getDetailRow('Email Address', item.email)}
-                            ${getDetailRow('ตำแหน่ง', item.position)}
-                            ${getDetailRow('ส่วนงาน', item.dept)}
-                            
-                            <div class="col-span-2 my-2 border-t border-gray-200"></div>
-
-                            <!-- รายละเอียดการลา -->
-                            ${getDetailRow('ประเภทการลา', item.type)}
-                            ${getDetailRow('จนวันที่ขอลา (จำนวนวัน)', formatLeaveDay(item.totalDays) + ' วัน')}
-                            ${getDetailRow('วันที่เริ่มต้นการลา', item.startDate)}
-                            ${getDetailRow('วันที่สิ้นสุดการลา', item.endDate)}
-                            ${getDetailRow('เหตุผลที่ลา', item.reason, true)}
-                            ${getDetailRow('เอกสารประกอบ', item.docs ? `<a href="${item.docs}" target="_blank" class="text-blue-500 underline">ดูเอกสาร</a>` : '-', true)}
-
-                            <div class="col-span-2 my-2 border-t border-gray-200"></div>
-
-                            <!-- สถานะและการอนุมัติ -->
-                            ${getDetailRow('สถานใบคำขอ', `<span class="px-2 py-1 rounded text-xs font-bold ${item.status.includes('อนุมัติ') ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-700'}">${item.status}</span>`, true)}
-                            ${getDetailRow('บันทึกหัวหน้า', item.managerNote, true)}
-                            ${getDetailRow('บันทึกHR', item.hrMemo, true)}
-                            
-                            <div class="col-span-2 my-2 border-t border-gray-200"></div>
-                            
-                            <!-- สิทธิวันลา (ณ วันที่ขอ) -->
-                            <div class="col-span-2 text-xs font-semibold text-gray-500 mb-1">สิทธิวันลา (ณ วันที่ขอ)</div>
-                            ${getDetailRow('สิทธิลากิจ', formatLeaveDay(item.rightsPersonal || 0))}
-                            ${getDetailRow('สิทธิลาป่วย', formatLeaveDay(item.rightsSick || 0))}
-                            ${getDetailRow('สิทธิลาพักร้อน', formatLeaveDay(item.rightsVacation || 0))}
-                        </div>
-                    </div>
-                `,
-                confirmButtonText: 'ปิด',
-                confirmButtonColor: '#e27d60',
-                customClass: {
-                    popup: 'rounded-2xl soft-shadow w-full max-w-lg'
-                }
-            });
-        }
-
-        async function sendFlexMessage(isSilent = false) {
-            if (!liff.isInClient()) {
-                if(!isSilent) Swal.fire('แจ้งเตือน', 'ฟังก์ชันนี้ใช้งานได้เฉพาะบนแอป LINE เท่านั้น', 'warning');
-                return;
-            }
-
-            if (!currentFlexData) return;
-
-            const d = currentFlexData.details;
-            
-            // Helper เพื่อสร้าง Row ในตาราง Flex
-            const createTableRow = (label, total, used, remain, color) => ({
-                type: "box",
-                layout: "horizontal",
-                contents: [
-                    { type: "text", text: label, size: "xs", color: "#555555", flex: 3 },
-                    { type: "text", text: String(formatLeaveDay(total)), size: "xs", align: "center", color: "#999999", flex: 2 },
-                    { type: "text", text: String(formatLeaveDay(used)), size: "xs", align: "center", color: "#999999", flex: 2 },
-                    { type: "text", text: String(formatLeaveDay(remain)), size: "xs", align: "end", weight: "bold", color: color, flex: 2 }
-                ],
-                margin: "sm"
-            });
-
-            // สร้าง Bubble แบบละเอียด
-            const bubble = {
-                type: "bubble",
-                size: "mega",
-                header: {
-                    type: "box",
-                    layout: "vertical",
-                    contents: [
-                        { type: "text", text: "สรุปสิทธิการลา", weight: "bold", color: "#ffffff", size: "xl" },
-                        { type: "text", text: currentFlexData.employee, color: "#ffffffcc", size: "sm" }
-                    ],
-                    backgroundColor: "#e27d60",
-                    paddingAll: "20px"
-                },
-                body: {
-                    type: "box",
-                    layout: "vertical",
-                    contents: [
-                        // Table Header
-                        {
-                            type: "box",
-                            layout: "horizontal",
-                            contents: [
-                                { type: "text", text: "ประเภท", size: "xs", weight: "bold", color: "#aaaaaa", flex: 3 },
-                                { type: "text", text: "ทั้งหมด", size: "xs", weight: "bold", align: "center", color: "#aaaaaa", flex: 2 },
-                                { type: "text", text: "ใช้ไป", size: "xs", weight: "bold", align: "center", color: "#aaaaaa", flex: 2 },
-                                { type: "text", text: "คงเหลือ", size: "xs", weight: "bold", align: "end", color: "#aaaaaa", flex: 2 }
-                            ],
-                            margin: "md",
-                            paddingBottom: "sm",
-                            borderColor: "#eeeeee",
-                            borderWidth: "0px 0px 1px 0px" // Border Bottom
-                        },
-                        // Table Body
-                        createTableRow("ลากิจ", d.find(x=>x.label==='ลากิจ').total, d.find(x=>x.label==='ลากิจ').used, d.find(x=>x.label==='ลากิจ').remain, "#3B82F6"),
-                        createTableRow("ลาป่วย", d.find(x=>x.label==='ลาป่วย').total, d.find(x=>x.label==='ลาป่วย').used, d.find(x=>x.label==='ลาป่วย').remain, "#EF4444"),
-                        createTableRow("พักร้อน", d.find(x=>x.label==='พักร้อน').total, d.find(x=>x.label==='พักร้อน').used, d.find(x=>x.label==='พักร้อน').remain, "#10B981"),
-                        
-                        { type: "separator", margin: "lg" },
-                        { type: "text", text: "หมายเหตุ: โปรดตรวจสอบข้อมูลความถูกต้องกับ HR อีกครั้ง", size: "xxs", color: "#aaaaaa", margin: "lg", align: "center", wrap: true }
-                    ]
-                }
-            };
-
-            try {
-                await liff.sendMessages([{ type: "flex", altText: "สรุปสิทธิการลาของคุณ", contents: bubble }]);
-                if(!isSilent) Swal.fire('สำเร็จ', 'ส่งข้อมูลเข้าแชทเรียบร้อยแล้ว', 'success');
-            } catch (error) {
-                console.error(error);
-                if(!isSilent) Swal.fire('ผิดพลาด', 'ไม่สามารถส่งข้อความได้ (อาจเกิดจากการเปิดบน Browser ภายนอก)', 'error');
-            }
-        }
-
-    </script>
-</body>
-</html>
+      }
+
+      // เรียงลำดับตาม ReqID
+      history.sort((a, b) => (a.reqId > b.reqId ? 1 : -1));
+
+      return output.setContent(JSON.stringify({
+        status: "success",
+        data: history,
+        empInfo: empObj
+      }));
+    }
+
+    // --- CASE 2: ขอสิทธิการลา (balance) ---
+    else if (action === "balance") {
+      // คำนวณคงเหลือ
+      const remaining = {
+        personal: empObj.rights.personal - empObj.used.personal,
+        sick: empObj.rights.sick - empObj.used.sick,
+        vacation: empObj.rights.vacation - empObj.used.vacation
+      };
+
+      // สร้างข้อมูลสำหรับแสดงผล Flex Message
+      const flexData = {
+        employee: empObj.fullName,
+        position: empObj.position,
+        department: empObj.department,
+        details: [
+          { label: "ลากิจ", total: empObj.rights.personal, used: empObj.used.personal, remain: remaining.personal },
+          { label: "ลาป่วย", total: empObj.rights.sick, used: empObj.used.sick, remain: remaining.sick },
+          { label: "พักร้อน", total: empObj.rights.vacation, used: empObj.used.vacation, remain: remaining.vacation }
+        ]
+      };
+
+      return output.setContent(JSON.stringify({
+        status: "success",
+        type: "flex",
+        data: flexData
+      }));
+    }
+
+    else {
+      return output.setContent(JSON.stringify({ status: "error", message: "Action ไม่ถูกต้อง" }));
+    }
+
+  } catch (error) {
+    return output.setContent(JSON.stringify({ status: "error", message: error.toString() }));
+  }
+}
