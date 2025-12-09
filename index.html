@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบจัดการใบลาแบบอัตโนมัติ</title>
+    
+    <!-- Font: Prompt -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <!-- LIFF SDK -->
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+    <!-- Font Awesome (Icons) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        :root {
+            --terracotta-start: #cc563d;
+            --terracotta-end: #f08a5d;
+            --text-primary: #333333;
+        }
+
+        body {
+            font-family: 'Prompt', sans-serif;
+            background-color: #f8f9fa;
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Terracotta Gradient Header */
+        .bg-terracotta-gradient {
+            background: linear-gradient(135deg, var(--terracotta-start) 0%, var(--terracotta-end) 100%);
+        }
+
+        /* Smooth Scroll & Animations */
+        .smooth-transition {
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        /* Card Hover Effect */
+        .hover-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(204, 86, 61, 0.15);
+        }
+
+        /* Soft Shadow */
+        .soft-shadow {
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Ripple Effect Logic via CSS/JS handled on click usually, using active state here */
+        .btn-ripple:active {
+            transform: scale(0.96);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #e27d60;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        /* Loader Animation */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 4px solid var(--terracotta-start);
+            width: 40px;
+            height: 40px;
+            -webkit-animation: spin 1s linear infinite; /* Safari */
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        .status-pending { background-color: #fff3cd; color: #856404; }
+        .status-approved { background-color: #d4edda; color: #155724; }
+        .status-rejected { background-color: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+
+    <!-- Header Section -->
+    <header class="bg-terracotta-gradient text-white p-6 rounded-b-3xl shadow-lg relative z-10">
+        <div class="container mx-auto max-w-4xl text-center">
+            <h1 class="text-2xl md:text-3xl font-bold mb-2 text-shadow-sm">ระบบจัดการใบลาแบบอัตโนมัติ</h1>
+            <p class="text-white/90 text-sm md:text-base font-light">
+                <i class="fas fa-info-circle mr-1"></i> หากต้องการติดต่องานบุคคล โปรดติดต่อ HR โดยตรง
+            </p>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow container mx-auto max-w-4xl p-4 -mt-4 relative z-20">
+        
+        <!-- Loading State -->
+        <div id="loading" class="hidden bg-white p-8 rounded-2xl soft-shadow text-center mt-8">
+            <div class="loader mb-4"></div>
+            <p class="text-gray-500 animate-pulse">กำลังโหลดข้อมูล...</p>
+        </div>
+
+        <!-- Content Area -->
+        <div id="content-area" class="fade-in hidden space-y-6">
+            <!-- Dynamic Content Injected Here -->
+        </div>
+
+        <!-- Empty State (Placeholder) -->
+        <div id="empty-state" class="hidden text-center py-12">
+            <i class="fas fa-clipboard-list text-6xl text-gray-200 mb-4"></i>
+            <p class="text-gray-400 text-lg">ไม่พบข้อมูลใบลา</p>
+        </div>
+
+    </main>
+
+    <!-- Footer Disclaimer -->
+    <footer class="text-center p-6 text-xs text-gray-400">
+        <p>หมายเหตุ: ข้อมูลในระบบเป็นการแสดงผลเบื้องต้น โปรดตรวจสอบความถูกต้องกับ HR อีกครั้งหากมีข้อสงสัย</p>
+    </footer>
+
+    <!-- Templates for Render -->
+    <!-- Template: Leave History Table -->
+    <template id="tpl-history">
+        <div class="bg-white rounded-2xl soft-shadow overflow-hidden">
+            <div class="p-4 border-b border-gray-100 bg-orange-50/50 flex justify-between items-center">
+                <h2 class="text-lg font-semibold text-gray-700"><i class="fas fa-history mr-2 text-orange-500"></i>ประวัติการลา</h2>
+                <span id="user-name-display" class="text-sm text-gray-500"></span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="text-gray-500 text-sm border-b border-gray-100 bg-gray-50">
+                            <th class="p-4 font-medium whitespace-nowrap">เลขที่</th>
+                            <th class="p-4 font-medium whitespace-nowrap">วันที่ลา</th>
+                            <th class="p-4 font-medium whitespace-nowrap">ประเภท</th>
+                            <th class="p-4 font-medium whitespace-nowrap text-center">สถานะ</th>
+                            <th class="p-4 font-medium text-center">รายละเอียด</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-list" class="text-sm text-gray-600">
+                        <!-- JS Loops Here -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="p-4 bg-gray-50 text-xs text-gray-500 border-t border-gray-100">
+                * ข้อมูลเรียงตามเลขที่ใบคำขอ
+            </div>
+        </div>
+    </template>
+
+    <!-- Template: Leave Rights Card (Flex Style) -->
+    <template id="tpl-rights">
+        <div class="bg-white rounded-2xl soft-shadow p-6 relative overflow-hidden">
+            <div class="absolute top-0 right-0 w-32 h-32 bg-orange-100 rounded-full -mr-16 -mt-16 opacity-50"></div>
+            
+            <div class="relative z-10 mb-6 text-center">
+                <div class="w-20 h-20 bg-gray-200 rounded-full mx-auto mb-3 overflow-hidden border-4 border-white shadow-md">
+                    <!-- Placeholder Image -->
+                    <img src="https://ui-avatars.com/api/?name=User&background=random" id="emp-img" alt="Profile" class="w-full h-full object-cover">
+                </div>
+                <h2 class="text-xl font-bold text-gray-800" id="emp-name">-</h2>
+                <p class="text-sm text-gray-500"><span id="emp-pos">-</span> | <span id="emp-dept">-</span></p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- Sick Leave -->
+                <div class="bg-red-50 p-4 rounded-xl border border-red-100 hover-card smooth-transition">
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="font-semibold text-red-700">ลาป่วย</h3>
+                        <i class="fas fa-procedures text-red-300"></i>
+                    </div>
+                    <div class="text-3xl font-bold text-red-600 mb-1" id="sick-remain">0</div>
+                    <div class="text-xs text-red-400 flex justify-between">
+                        <span>ทั้งหมด <span id="sick-total">0</span></span>
+                        <span>ใช้ไป <span id="sick-used">0</span></span>
+                    </div>
+                </div>
+
+                <!-- Personal Leave -->
+                <div class="bg-blue-50 p-4 rounded-xl border border-blue-100 hover-card smooth-transition">
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="font-semibold text-blue-700">ลากิจ</h3>
+                        <i class="fas fa-briefcase text-blue-300"></i>
+                    </div>
+                    <div class="text-3xl font-bold text-blue-600 mb-1" id="personal-remain">0</div>
+                    <div class="text-xs text-blue-400 flex justify-between">
+                        <span>ทั้งหมด <span id="personal-total">0</span></span>
+                        <span>ใช้ไป <span id="personal-used">0</span></span>
+                    </div>
+                </div>
+
+                <!-- Vacation Leave -->
+                <div class="bg-green-50 p-4 rounded-xl border border-green-100 hover-card smooth-transition">
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="font-semibold text-green-700">พักร้อน</h3>
+                        <i class="fas fa-umbrella-beach text-green-300"></i>
+                    </div>
+                    <div class="text-3xl font-bold text-green-600 mb-1" id="vacation-remain">0</div>
+                    <div class="text-xs text-green-400 flex justify-between">
+                        <span>ทั้งหมด <span id="vacation-total">0</span></span>
+                        <span>ใช้ไป <span id="vacation-used">0</span></span>
+                    </div>
+                </div>
+            </div>
+            
+            <button id="btn-send-line" onclick="sendFlexMessage()" class="mt-6 w-full bg-terracotta-gradient text-white py-3 rounded-xl shadow-lg btn-ripple smooth-transition font-medium hover:opacity-90">
+                <i class="fab fa-line mr-2"></i> ส่งข้อมูลเข้าแชท LINE
+            </button>
+        </div>
+    </template>
+
+    <script>
+        // --- CONFIGURATION ---
+        // ใส่ URL ที่ได้จาก Deployment ID ที่ระบุมา
+        const GAS_API_URL = 'https://script.google.com/macros/s/AKfycbzZL0KZQyd7gIsip_fkiVcIk8xOyoojfmP5CAWU-zW79Nua_112N4g4Ti6lFkJBmTi0OA/exec';
+        const LIFF_ID = '2008647384-Oy59agYa';
+
+        // Global Data Storage
+        let currentFlexData = null;
+
+        // --- INIT ---
+        document.addEventListener('DOMContentLoaded', async () => {
+            await initLiff();
+        });
+
+        async function initLiff() {
+            try {
+                // Initialize LIFF
+                await liff.init({ liffId: LIFF_ID });
+                
+                if (!liff.isLoggedIn()) {
+                    liff.login();
+                    return;
+                }
+
+                // Get URL Params (action)
+                const urlParams = new URLSearchParams(window.location.search);
+                const action = urlParams.get('action') || 'สิทธิการลา'; // Default action
+
+                // Get User Profile
+                const profile = await liff.getProfile();
+                const lineId = profile.userId;
+
+                // Call Backend
+                fetchData(action, lineId);
+
+            } catch (error) {
+                console.error("LIFF Error or Local Test:", error);
+                // Fallback for Local Testing (Remove in Production)
+                if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+                    // Mock ID for testing
+                    // fetchData('ใบลา', 'U1234567890dummy'); 
+                    Swal.fire('Info', 'Running in Local Mode. Please open in LINE.', 'info');
+                } else {
+                    Swal.fire('Error', 'ไม่สามารถเชื่อมต่อ LINE ได้: ' + error.message, 'error');
+                }
+            }
+        }
+
+        // --- API HANDLER ---
+        async function fetchData(action, lineId) {
+            showLoading(true);
+            const contentArea = document.getElementById('content-area');
+            const emptyState = document.getElementById('empty-state');
+            contentArea.innerHTML = '';
+            contentArea.classList.add('hidden');
+            emptyState.classList.add('hidden');
+
+            try {
+                // Prepare Payload
+                const payload = {
+                    action: action,
+                    lineId: lineId
+                };
+
+                // Fetch with No-CORS workaround for GAS is not needed if we use POST correctly and handle response
+                // But GAS WebApp POST returns JSON fine with CORS if configured correctly in GAS code
+                const response = await fetch(GAS_API_URL, {
+                    method: 'POST',
+                    mode: 'cors', 
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+
+                if (result.status !== 'success') {
+                    throw new Error(result.message);
+                }
+
+                showLoading(false);
+                contentArea.classList.remove('hidden');
+
+                if (action === 'ใบลา') {
+                    renderLeaveHistory(result.data, result.empInfo);
+                } else if (action === 'สิทธิการลา') {
+                    currentFlexData = result.data; // Store for sending to chat
+                    renderLeaveRights(result.data);
+                }
+
+            } catch (error) {
+                showLoading(false);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'เกิดข้อผิดพลาด',
+                    text: error.message,
+                    confirmButtonColor: '#e27d60'
+                });
+            }
+        }
+
+        // --- RENDER FUNCTIONS ---
+
+        function renderLeaveHistory(data, empInfo) {
+            if (!data || data.length === 0) {
+                document.getElementById('empty-state').classList.remove('hidden');
+                return;
+            }
+
+            const tpl = document.getElementById('tpl-history');
+            const clone = tpl.content.cloneNode(true);
+
+            clone.querySelector('#user-name-display').textContent = empInfo.fullName;
+            
+            const tbody = clone.querySelector('#history-list');
+            
+            data.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.className = "border-b border-gray-50 hover:bg-orange-50/30 transition-colors";
+                
+                // Status Logic
+                let statusClass = 'status-pending';
+                let statusText = item.status;
+                if(item.status.includes('อนุมัติ')) statusClass = 'status-approved';
+                if(item.status.includes('ไม่อนุมัติ') || item.status.includes('ยกเลิก')) statusClass = 'status-rejected';
+
+                tr.innerHTML = `
+                    <td class="p-4 font-medium text-gray-800">#${item.reqId}</td>
+                    <td class="p-4">
+                        <div class="flex flex-col">
+                            <span>${item.startDate}</span>
+                            <span class="text-xs text-gray-400">ถึง ${item.endDate}</span>
+                        </div>
+                    </td>
+                    <td class="p-4">${item.type}</td>
+                    <td class="p-4 text-center"><span class="${statusClass} status-badge">${statusText}</span></td>
+                    <td class="p-4 text-center">
+                        <button class="text-orange-500 hover:text-orange-700 btn-ripple p-2 rounded-full hover:bg-orange-100 transition-all"
+                            onclick='viewDetails(${JSON.stringify(item)})'>
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('content-area').appendChild(clone);
+        }
+
+        function renderLeaveRights(data) {
+            const tpl = document.getElementById('tpl-rights');
+            const clone = tpl.content.cloneNode(true);
+
+            // Set Employee Info
+            clone.querySelector('#emp-name').textContent = data.employee;
+            clone.querySelector('#emp-pos').textContent = data.position;
+            clone.querySelector('#emp-dept').textContent = data.department;
+            clone.querySelector('#emp-img').src = `https://ui-avatars.com/api/?name=${data.employee}&background=e27d60&color=fff`;
+
+            // Map data details (Assuming array order: Personal[0], Sick[1], Vacation[2])
+            // Note: Use array.find if you want to be stricter with labels
+            const personal = data.details.find(d => d.label === 'ลากิจ') || {remain:0, total:0, used:0};
+            const sick = data.details.find(d => d.label === 'ลาป่วย') || {remain:0, total:0, used:0};
+            const vacation = data.details.find(d => d.label === 'พักร้อน') || {remain:0, total:0, used:0};
+
+            // Sick
+            clone.querySelector('#sick-remain').textContent = sick.remain;
+            clone.querySelector('#sick-total').textContent = sick.total;
+            clone.querySelector('#sick-used').textContent = sick.used;
+
+            // Personal
+            clone.querySelector('#personal-remain').textContent = personal.remain;
+            clone.querySelector('#personal-total').textContent = personal.total;
+            clone.querySelector('#personal-used').textContent = personal.used;
+
+            // Vacation
+            clone.querySelector('#vacation-remain').textContent = vacation.remain;
+            clone.querySelector('#vacation-total').textContent = vacation.total;
+            clone.querySelector('#vacation-used').textContent = vacation.used;
+
+            document.getElementById('content-area').appendChild(clone);
+        }
+
+        // --- UTILS ---
+
+        function showLoading(isLoading) {
+            const loader = document.getElementById('loading');
+            if (isLoading) loader.classList.remove('hidden');
+            else loader.classList.add('hidden');
+        }
+
+        function viewDetails(item) {
+            Swal.fire({
+                title: `<span class="text-lg font-bold text-gray-700">คำขอเลขที่ #${item.reqId}</span>`,
+                html: `
+                    <div class="text-left text-sm space-y-3 p-2">
+                        <div class="grid grid-cols-3 gap-2 border-b pb-2">
+                            <span class="text-gray-500">ประเภท:</span>
+                            <span class="col-span-2 font-medium text-gray-800">${item.type}</span>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 border-b pb-2">
+                            <span class="text-gray-500">เหตุผล:</span>
+                            <span class="col-span-2 text-gray-800">${item.reason || '-'}</span>
+                        </div>
+                         <div class="grid grid-cols-3 gap-2 border-b pb-2">
+                            <span class="text-gray-500">รวมวันลา:</span>
+                            <span class="col-span-2 text-gray-800">${item.totalDays || '-'} วัน</span>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 border-b pb-2">
+                            <span class="text-gray-500">หัวหน้า:</span>
+                            <span class="col-span-2 text-gray-800">${item.managerNote || '-'}</span>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2">
+                            <span class="text-gray-500">HR Memo:</span>
+                            <span class="col-span-2 text-gray-800">${item.hrMemo || '-'}</span>
+                        </div>
+                    </div>
+                `,
+                confirmButtonText: 'ปิด',
+                confirmButtonColor: '#e27d60',
+                customClass: {
+                    popup: 'rounded-2xl soft-shadow'
+                }
+            });
+        }
+
+        async function sendFlexMessage() {
+            if (!liff.isInClient()) {
+                Swal.fire('แจ้งเตือน', 'ฟังก์ชันนี้ใช้งานได้เฉพาะบนแอป LINE เท่านั้น', 'warning');
+                return;
+            }
+
+            if (!currentFlexData) return;
+
+            const d = currentFlexData.details;
+            // Map details to Flex Bubble structure
+            // Note: Simplifying for brevity, assuming standard structure
+            const bubble = {
+                type: "bubble",
+                size: "mega",
+                header: {
+                    type: "box",
+                    layout: "vertical",
+                    contents: [
+                        { type: "text", text: "สรุปสิทธิการลา", weight: "bold", color: "#ffffff", size: "xl" },
+                        { type: "text", text: currentFlexData.employee, color: "#ffffffcc", size: "sm" }
+                    ],
+                    backgroundColor: "#e27d60",
+                    paddingAll: "20px"
+                },
+                body: {
+                    type: "box",
+                    layout: "vertical",
+                    contents: [
+                        createFlexRow("ลากิจคงเหลือ", d.find(x=>x.label==='ลากิจ').remain, "#3B82F6"),
+                        createFlexRow("ลาป่วยคงเหลือ", d.find(x=>x.label==='ลาป่วย').remain, "#EF4444"),
+                        createFlexRow("พักร้อนคงเหลือ", d.find(x=>x.label==='พักร้อน').remain, "#10B981"),
+                        { type: "separator", margin: "lg" },
+                        { type: "text", text: "โปรดตรวจสอบข้อมูลกับ HR อีกครั้ง", size: "xs", color: "#aaaaaa", margin: "lg", align: "center" }
+                    ]
+                }
+            };
+
+            function createFlexRow(label, value, color) {
+                return {
+                    type: "box",
+                    layout: "horizontal",
+                    margin: "md",
+                    contents: [
+                        { type: "text", text: label, size: "sm", color: "#555555", flex: 3 },
+                        { type: "text", text: String(value), size: "xl", color: color, weight: "bold", align: "end", flex: 2 }
+                    ]
+                };
+            }
+
+            try {
+                await liff.sendMessages([{ type: "flex", altText: "สรุปสิทธิการลาของคุณ", contents: bubble }]);
+                Swal.fire('สำเร็จ', 'ส่งข้อมูลเข้าแชทเรียบร้อยแล้ว', 'success');
+            } catch (error) {
+                Swal.fire('ผิดพลาด', 'ไม่สามารถส่งข้อความได้: ' + error.message, 'error');
+            }
+        }
+
+    </script>
+</body>
+</html>
